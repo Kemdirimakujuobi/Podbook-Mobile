@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct PodcastCard: View {
-    let podcast: Podcast
+    let episode: Episode
 
     var cardColor: Color {
-        switch podcast.coverColor {
+        switch episode.coverColor {
         case "purple": return Color(red: 0.6, green: 0.5, blue: 0.9)
         case "pink": return Color(red: 1.0, green: 0.5, blue: 0.6)
         case "yellow": return Color(red: 0.95, green: 0.8, blue: 0.2)
+        case "green": return Color(red: 0.4, green: 0.8, blue: 0.6)
         default: return .gray
         }
     }
@@ -20,11 +21,11 @@ struct PodcastCard: View {
                     .fill(cardColor)
                     .frame(width: 120, height: 120)
 
-                // Episode count badge
+                // Duration badge
                 HStack(spacing: 4) {
                     Image(systemName: "headphones")
                         .font(.system(size: 10))
-                    Text("\(podcast.episodeCount)")
+                    Text(episode.formattedDuration)
                         .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundColor(.white)
@@ -37,63 +38,38 @@ struct PodcastCard: View {
 
             // Metadata
             VStack(alignment: .leading, spacing: 6) {
-                Text(podcast.title)
+                Text(episode.title)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
-                Text(podcast.author)
+                Text(episode.author)
                     .font(.system(size: 14))
                     .foregroundColor(.gray)
 
-                Text(formatDate(podcast.date))
+                Text(formatDate(episode.publishedAt))
                     .font(.system(size: 13))
                     .foregroundColor(.gray)
 
                 HStack(spacing: 8) {
-                    // Progress bar
-                    if podcast.progress > 0 {
-                        HStack(spacing: 0) {
-                            Text("•")
-                                .foregroundColor(.gray)
-                                .font(.system(size: 12))
+                    Text(episode.formattedDuration)
+                        .font(.system(size: 13))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.2))
+                        .cornerRadius(6)
 
-                            GeometryReader { geometry in
-                                ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.gray.opacity(0.3))
-                                        .frame(height: 3)
-
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.white)
-                                        .frame(width: geometry.size.width * podcast.progress, height: 3)
-                                }
-                            }
-                            .frame(height: 3)
-                            .frame(maxWidth: 60)
-
-                            Text("•")
-                                .foregroundColor(.gray)
-                                .font(.system(size: 12))
-                        }
+                    if let category = episode.category {
+                        Text(category)
+                            .font(.system(size: 13))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.2))
+                            .cornerRadius(6)
                     }
-
-                    Text(podcast.duration)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(6)
-
-                    Text(podcast.category)
-                        .font(.system(size: 13))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.2))
-                        .cornerRadius(6)
                 }
             }
 
@@ -111,6 +87,6 @@ struct PodcastCard: View {
 }
 
 #Preview {
-    PodcastCard(podcast: Podcast.sampleData[0].podcasts[0])
+    PodcastCard(episode: Episode.sampleEpisodes[0])
         .background(Color.black)
 }

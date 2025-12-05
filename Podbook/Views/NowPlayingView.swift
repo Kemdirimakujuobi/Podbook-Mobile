@@ -1,26 +1,73 @@
 import SwiftUI
 
 struct NowPlayingView: View {
-    let podcast: Podcast
+    let episode: Episode
     @Binding var isPresented: Bool
 
-    @State private var currentTime: Double = 1404 // 23:34 in seconds
-    @State private var isPlaying = false
+    @StateObject private var audioPlayer = AudioPlayerService.shared
     @State private var isDragging = false
+    @State private var dragTime: Double = 0
     @State private var skipBackwardRotation: Double = 0
     @State private var skipForwardRotation: Double = 0
     @StateObject private var transcriptViewModel: TranscriptViewModel
 
-    let totalDuration: Double = 3274 // 54:34 in seconds
+    var currentTime: Double {
+        isDragging ? dragTime : audioPlayer.currentTime
+    }
 
-    init(podcast: Podcast, isPresented: Binding<Bool>) {
-        self.podcast = podcast
+    var currentTimeBinding: Binding<Double> {
+        Binding(
+            get: { currentTime },
+            set: { newValue in
+                dragTime = newValue
+            }
+        )
+    }
+
+    var totalDuration: Double {
+        audioPlayer.duration > 0 ? audioPlayer.duration : Double(episode.durationSeconds)
+    }
+
+    init(episode: Episode, isPresented: Binding<Bool>) {
+        self.episode = episode
         self._isPresented = isPresented
-        self._transcriptViewModel = StateObject(wrappedValue: TranscriptViewModel(segments: TranscriptSegment.sampleTranscript))
+
+        // Convert word timestamps to transcript segments for the view model
+        let segments = Self.createTranscriptSegments(from: episode.transcript)
+        self._transcriptViewModel = StateObject(wrappedValue: TranscriptViewModel(segments: segments))
+    }
+
+    private static func createTranscriptSegments(from words: [WordTimestamp]) -> [TranscriptSegment] {
+        guard !words.isEmpty else {
+            return TranscriptSegment.sampleTranscript
+        }
+
+        // Group words into segments of ~10 words each
+        let wordsPerSegment = 10
+        var segments: [TranscriptSegment] = []
+
+        for i in stride(from: 0, to: words.count, by: wordsPerSegment) {
+            let endIndex = min(i + wordsPerSegment, words.count)
+            let segmentWords = Array(words[i..<endIndex])
+
+            guard let firstWord = segmentWords.first,
+                  let lastWord = segmentWords.last else { continue }
+
+            let text = segmentWords.map { $0.word }.joined(separator: " ")
+            let segment = TranscriptSegment(
+                startTime: firstWord.startTime,
+                endTime: lastWord.endTime,
+                text: text,
+                words: segmentWords
+            )
+            segments.append(segment)
+        }
+
+        return segments.isEmpty ? TranscriptSegment.sampleTranscript : segments
     }
 
     var palette: ColorPalette {
-        ColorPalette.palette(for: podcast.coverColor)
+        ColorPalette.palette(for: episode.coverColor)
     }
 
     var backgroundColor: Color {
@@ -57,7 +104,7 @@ struct NowPlayingView: View {
 
                     // Title + Icon lockup
                     HStack(alignment: .center) {
-                        Text(podcast.author)
+                        Text(episode.author)
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(authorNameColor)
 
@@ -83,7 +130,7 @@ struct NowPlayingView: View {
                     VStack(alignment: .center, spacing: 8) {
                         TranscriptScrollView(
                             viewModel: transcriptViewModel,
-                            currentTime: $currentTime,
+                            currentTime: currentTimeBinding,
                             activeColor: transcriptActiveColor,
                             inactiveColor: transcriptInactiveColor,
                             backgroundColor: backgroundColor
@@ -95,7 +142,7 @@ struct NowPlayingView: View {
                     .onAppear {
                         // Set up seek callback
                         transcriptViewModel.onSeek = { time in
-                            currentTime = time
+                            audioPlayer.seek(to: time)
                         }
                     }
 
@@ -193,7 +240,7 @@ struct NowPlayingView: View {
                         .frame(width: 46, height: 56)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(podcast.title)
+                            Text(episode.title)
                                 .font(.system(size: 20, weight: .semibold))
                                 .foregroundColor(.white)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -207,12 +254,12 @@ struct NowPlayingView: View {
                     // Playback container
                     VStack(alignment: .leading, spacing: 8) {
                         SegmentedProgressBar(
-                            currentTime: $currentTime,
+                            currentTime: currentTimeBinding,
                             totalDuration: totalDuration,
-                            segments: PlaybackSegment.sampleSegments,
+                            segments: [PlaybackSegment(id: UUID(), label: "Episode", startTime: 0, endTime: totalDuration)],
                             isDragging: $isDragging,
                             onSeek: { newTime in
-                                currentTime = max(0, min(newTime, totalDuration))
+                                audioPlayer.seek(to: max(0, min(newTime, totalDuration)))
                             }
                         )
                         .frame(height: 16)
@@ -232,13 +279,24 @@ struct NowPlayingView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(width: 402, alignment: .topLeading)
 
                     // Playback control container
-                    HStack(alignment: .center, spacing: 24) {
+                    HStack(alignment: .center, spacing: 16) {
+                        // Info button
+                        Button(action: {}) {
+                            HStack(alignment: .center, spacing: 8) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(8)
+                            .frame(width: 48, height: 48, alignment: .center)
+                        }
+
                         // Skip backward button
                         Button(action: {
-                            currentTime = max(0, currentTime - 15)
+                            audioPlayer.skipBackward()
                             let impact = UIImpactFeedbackGenerator(style: .light)
                             impact.impactOccurred()
 
@@ -258,31 +316,33 @@ struct NowPlayingView: View {
                                     .foregroundColor(.white)
                             }
                             .padding(8)
-                            .frame(width: 48, height: 48, alignment: .center)
+                            .frame(width: 56, height: 56, alignment: .center)
+                            .background(.white.opacity(0.08))
+                            .cornerRadius(999)
                         }
                         .rotationEffect(.degrees(skipBackwardRotation))
 
                         // Play/Pause button
                         Button(action: {
-                            isPlaying.toggle()
+                            audioPlayer.togglePlayPause()
                         }) {
                             HStack(alignment: .center, spacing: 10) {
-                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
                                     .contentTransition(.symbolEffect(.replace))
                                     .font(.system(size: 28))
                                     .foregroundColor(.white)
-                                    .offset(x: isPlaying ? 0 : 2)
+                                    .offset(x: audioPlayer.isPlaying ? 0 : 2)
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 12)
-                            .frame(width: 66, height: 66, alignment: .center)
+                            .frame(width: 82, height: 66, alignment: .center)
                             .background(.white.opacity(0.08))
-                            .cornerRadius(56)
+                            .cornerRadius(48)
                         }
 
                         // Skip forward button
                         Button(action: {
-                            currentTime = min(totalDuration, currentTime + 15)
+                            audioPlayer.skipForward()
                             let impact = UIImpactFeedbackGenerator(style: .light)
                             impact.impactOccurred()
 
@@ -302,9 +362,22 @@ struct NowPlayingView: View {
                                     .foregroundColor(.white)
                             }
                             .padding(8)
-                            .frame(width: 48, height: 48, alignment: .center)
+                            .frame(width: 56, height: 56, alignment: .center)
+                            .background(.white.opacity(0.08))
+                            .cornerRadius(999)
                         }
                         .rotationEffect(.degrees(skipForwardRotation))
+
+                        // Speed button
+                        Button(action: {}) {
+                            HStack(alignment: .center, spacing: 8) {
+                                Text("1×")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .padding(8)
+                            .frame(width: 48, height: 48, alignment: .center)
+                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 0)
@@ -324,6 +397,9 @@ struct NowPlayingView: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .statusBarHidden(true)
+        .task {
+            await audioPlayer.load(episode: episode)
+        }
     }
 
     private func formatTime(_ timeInSeconds: Double) -> String {
@@ -351,7 +427,7 @@ struct TranscriptLine: View {
 
 #Preview {
     NowPlayingView(
-        podcast: Podcast.sampleData[0].podcasts[0],
+        episode: Episode.sample,
         isPresented: .constant(true)
     )
 }

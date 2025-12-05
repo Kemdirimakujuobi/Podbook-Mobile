@@ -24,6 +24,10 @@
 		AA000001000000000000000F /* ColorPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000001000000000000000F /* ColorPalette.swift */; };
 		AA0000010000000000000010 /* PlaybackSegment.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000010 /* PlaybackSegment.swift */; };
 		AA0000010000000000000011 /* SegmentedProgressBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000011 /* SegmentedProgressBar.swift */; };
+		AA0000010000000000000012 /* Episode.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000012 /* Episode.swift */; };
+		AA0000010000000000000013 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000013 /* APIService.swift */; };
+		AA0000010000000000000014 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000014 /* FeedViewModel.swift */; };
+		AA0000010000000000000015 /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000010000000000000015 /* AudioPlayerService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +48,10 @@
 		BB000001000000000000000F /* ColorPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorPalette.swift; sourceTree = "<group>"; };
 		BB0000010000000000000010 /* PlaybackSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackSegment.swift; sourceTree = "<group>"; };
 		BB0000010000000000000011 /* SegmentedProgressBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SegmentedProgressBar.swift; sourceTree = "<group>"; };
+		BB0000010000000000000012 /* Episode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Episode.swift; sourceTree = "<group>"; };
+		BB0000010000000000000013 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		BB0000010000000000000014 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
+		BB0000010000000000000015 /* AudioPlayerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerService.swift; sourceTree = "<group>"; };
 		CC0000010000000000000001 /* Podbook.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Podbook.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -73,6 +81,7 @@
 				BB0000010000000000000002 /* ContentView.swift */,
 				EE0000010000000000000004 /* Models */,
 				EE0000010000000000000008 /* ViewModels */,
+				EE0000010000000000000009 /* Services */,
 				EE0000010000000000000005 /* Views */,
 				BB0000010000000000000009 /* Assets.xcassets */,
 				EE0000010000000000000007 /* Preview Content */,
@@ -95,6 +104,7 @@
 				BB0000010000000000000004 /* Transcript.swift */,
 				BB000001000000000000000F /* ColorPalette.swift */,
 				BB0000010000000000000010 /* PlaybackSegment.swift */,
+				BB0000010000000000000012 /* Episode.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -134,8 +144,18 @@
 			isa = PBXGroup;
 			children = (
 				BB000001000000000000000C /* TranscriptViewModel.swift */,
+				BB0000010000000000000014 /* FeedViewModel.swift */,
 			);
 			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		EE0000010000000000000009 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				BB0000010000000000000013 /* APIService.swift */,
+				BB0000010000000000000015 /* AudioPlayerService.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -223,6 +243,10 @@
 				AA000001000000000000000F /* ColorPalette.swift in Sources */,
 				AA0000010000000000000010 /* PlaybackSegment.swift in Sources */,
 				AA0000010000000000000011 /* SegmentedProgressBar.swift in Sources */,
+				AA0000010000000000000012 /* Episode.swift in Sources */,
+				AA0000010000000000000013 /* APIService.swift in Sources */,
+				AA0000010000000000000014 /* FeedViewModel.swift in Sources */,
+				AA0000010000000000000015 /* AudioPlayerService.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

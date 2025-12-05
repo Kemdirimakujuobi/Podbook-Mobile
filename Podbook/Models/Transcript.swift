@@ -1,9 +1,15 @@
 import Foundation
 
-struct WordTimestamp {
+struct WordTimestamp: Codable, Equatable {
     let word: String
     let startTime: TimeInterval
     let endTime: TimeInterval
+
+    enum CodingKeys: String, CodingKey {
+        case word
+        case startTime = "start_time"
+        case endTime = "end_time"
+    }
 }
 
 struct TranscriptSegment: Identifiable {
@@ -12,6 +18,23 @@ struct TranscriptSegment: Identifiable {
     let endTime: Double
     let text: String
     let words: [WordTimestamp] // word-level timing for future use
+}
+
+// MARK: - Sample Data for Previews
+extension WordTimestamp {
+    static let sampleTranscript: [WordTimestamp] = {
+        let text = """
+        Discover the secrets beneath our feet in Terra Firma Tales. We explore the vital role of soil in our ecosystem, from supporting plant life to filtering water. Join us as we uncover the hidden world below and learn how to protect this precious resource. The health of our soil directly impacts the food we eat and the air we breathe. In this episode, we speak with leading soil scientists about the fascinating microbiomes that exist in healthy soil and how modern agricultural practices are affecting these delicate ecosystems. We'll also explore innovative solutions for soil conservation and regenerative farming techniques that are helping to restore degraded land.
+        """
+        let words = text.split(separator: " ").map(String.init)
+        let avgWordDuration = 0.4 // seconds per word
+
+        return words.enumerated().map { index, word in
+            let start = Double(index) * avgWordDuration
+            let end = start + avgWordDuration
+            return WordTimestamp(word: word, startTime: start, endTime: end)
+        }
+    }()
 }
 
 extension TranscriptSegment {

@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct FeedView: View {
-    @State private var selectedPodcast: Podcast?
+    @StateObject private var viewModel = FeedViewModel()
+    @State private var selectedEpisode: Episode?
     @State private var showNowPlaying = false
 
     var body: some View {
@@ -22,10 +23,10 @@ struct FeedView: View {
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 16) {
-                                    ForEach(Podcast.featuredPodcasts) { podcast in
-                                        FeaturedPodcastCard(podcast: podcast)
+                                    ForEach(viewModel.featuredEpisodes) { episode in
+                                        FeaturedPodcastCard(episode: episode)
                                             .onTapGesture {
-                                                selectedPodcast = podcast
+                                                selectedEpisode = episode
                                                 showNowPlaying = true
                                             }
                                     }
@@ -35,7 +36,7 @@ struct FeedView: View {
                         }
 
                         // Timeline Sections
-                        ForEach(Podcast.sampleData) { section in
+                        ForEach(viewModel.groupedEpisodes, id: \.title) { section in
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack {
                                     Text(section.title)
@@ -43,17 +44,17 @@ struct FeedView: View {
                                         .fontWeight(.bold)
                                         .foregroundColor(.white)
 
-                                    Text("\(section.count)")
+                                    Text("\(section.episodes.count)")
                                         .font(.title2)
                                         .foregroundColor(.gray)
                                 }
                                 .padding(.horizontal)
 
                                 VStack(spacing: 16) {
-                                    ForEach(section.podcasts) { podcast in
-                                        PodcastCard(podcast: podcast)
+                                    ForEach(section.episodes) { episode in
+                                        PodcastCard(episode: episode)
                                             .onTapGesture {
-                                                selectedPodcast = podcast
+                                                selectedEpisode = episode
                                                 showNowPlaying = true
                                             }
                                     }
@@ -64,20 +65,26 @@ struct FeedView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 100)
                 }
+                .refreshable {
+                    await viewModel.refresh()
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
         }
         .sheet(isPresented: $showNowPlaying) {
-            if let podcast = selectedPodcast {
-                let palette = ColorPalette.palette(for: podcast.coverColor)
+            if let episode = selectedEpisode {
+                let palette = ColorPalette.palette(for: episode.coverColor)
                 let bgColor = Color(palette: palette.shade900)
 
-                NowPlayingView(podcast: podcast, isPresented: $showNowPlaying)
+                NowPlayingView(episode: episode, isPresented: $showNowPlaying)
                     .presentationBackground(bgColor)
                     .presentationDragIndicator(.hidden)
                     .presentationDetents([.large])
                     .interactiveDismissDisabled(false)
             }
+        }
+        .task {
+            await viewModel.loadEpisodes()
         }
     }
 }

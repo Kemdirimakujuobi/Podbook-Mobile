@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct FeaturedPodcastCard: View {
-    let podcast: Podcast
+    let episode: Episode
 
     var cardColor: Color {
-        switch podcast.coverColor {
+        switch episode.coverColor {
         case "purple": return Color(red: 0.6, green: 0.5, blue: 0.9)
         case "pink": return Color(red: 1.0, green: 0.5, blue: 0.6)
         case "yellow": return Color(red: 0.95, green: 0.8, blue: 0.2)
@@ -20,11 +20,11 @@ struct FeaturedPodcastCard: View {
                     .fill(cardColor)
                     .frame(width: 240, height: 240)
 
-                // Episode count badge
+                // Duration badge
                 HStack(spacing: 4) {
                     Image(systemName: "headphones")
                         .font(.system(size: 12))
-                    Text("\(podcast.episodeCount)")
+                    Text(episode.formattedDuration)
                         .font(.system(size: 14, weight: .semibold))
                 }
                 .foregroundColor(.white)
@@ -39,6 +39,6 @@ struct FeaturedPodcastCard: View {
 }
 
 #Preview {
-    FeaturedPodcastCard(podcast: Podcast.featuredPodcasts[0])
+    FeaturedPodcastCard(episode: Episode.featuredEpisodes[0])
         .background(Color.black)
 }
