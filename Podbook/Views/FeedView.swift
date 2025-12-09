@@ -2,8 +2,8 @@ import SwiftUI
 
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
-    @State private var selectedEpisode: Episode?
-    @State private var showNowPlaying = false
+    @State private var presentedEpisode: Episode?
+    @State private var showAddEpisode = false
 
     var body: some View {
         NavigationView {
@@ -15,19 +15,31 @@ struct FeedView: View {
                     VStack(alignment: .leading, spacing: 24) {
                         // Featured Section
                         VStack(alignment: .leading, spacing: 16) {
-                            Text("Featured")
-                                .font(.title2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal)
+                            HStack {
+                                Text("Featured")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.white)
+
+                                Spacer()
+
+                                Button(action: { showAddEpisode = true }) {
+                                    Image(systemName: "plus")
+                                        .font(.title3)
+                                        .foregroundColor(.white.opacity(0.8))
+                                        .frame(width: 36, height: 36)
+                                        .background(Color.white.opacity(0.15))
+                                        .cornerRadius(10)
+                                }
+                            }
+                            .padding(.horizontal)
 
                             ScrollView(.horizontal, showsIndicators: false) {
                                 HStack(spacing: 16) {
                                     ForEach(viewModel.featuredEpisodes) { episode in
                                         FeaturedPodcastCard(episode: episode)
                                             .onTapGesture {
-                                                selectedEpisode = episode
-                                                showNowPlaying = true
+                                                presentedEpisode = episode
                                             }
                                     }
                                 }
@@ -54,8 +66,7 @@ struct FeedView: View {
                                     ForEach(section.episodes) { episode in
                                         PodcastCard(episode: episode)
                                             .onTapGesture {
-                                                selectedEpisode = episode
-                                                showNowPlaying = true
+                                                presentedEpisode = episode
                                             }
                                     }
                                 }
@@ -71,20 +82,20 @@ struct FeedView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
         }
-        .sheet(isPresented: $showNowPlaying) {
-            if let episode = selectedEpisode {
-                let palette = ColorPalette.palette(for: episode.coverColor)
-                let bgColor = Color(palette: palette.shade900)
-
-                NowPlayingView(episode: episode, isPresented: $showNowPlaying)
-                    .presentationBackground(bgColor)
-                    .presentationDragIndicator(.hidden)
-                    .presentationDetents([.large])
-                    .interactiveDismissDisabled(false)
-            }
+        .fullScreenCover(item: $presentedEpisode) { episode in
+            NowPlayingView(episode: episode, presentedEpisode: $presentedEpisode)
+        }
+        .sheet(isPresented: $showAddEpisode) {
+            AddEpisodeSheet(isPresented: $showAddEpisode)
+                .presentationDetents([.medium, .large])
         }
         .task {
             await viewModel.loadEpisodes()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name.episodeGenerated)) { _ in
+            Task {
+                await viewModel.refresh()
+            }
         }
     }
 }

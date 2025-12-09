@@ -2,7 +2,7 @@ import SwiftUI
 
 struct NowPlayingView: View {
     let episode: Episode
-    @Binding var isPresented: Bool
+    @Binding var presentedEpisode: Episode?
 
     @StateObject private var audioPlayer = AudioPlayerService.shared
     @State private var isDragging = false
@@ -10,27 +10,93 @@ struct NowPlayingView: View {
     @State private var skipBackwardRotation: Double = 0
     @State private var skipForwardRotation: Double = 0
     @StateObject private var transcriptViewModel: TranscriptViewModel
+    @State private var showQuestionSheet = false
+    @State private var questionTimestamp: TimeInterval = 0
 
+    /// Current time within the current phase
     var currentTime: Double {
         isDragging ? dragTime : audioPlayer.currentTime
     }
 
+    /// Combined current time across all phases (for transcript sync)
+    var combinedCurrentTime: Double {
+        isDragging ? dragTime : audioPlayer.combinedCurrentTime
+    }
+
     var currentTimeBinding: Binding<Double> {
         Binding(
-            get: { currentTime },
+            get: { combinedCurrentTime },
             set: { newValue in
                 dragTime = newValue
             }
         )
     }
 
-    var totalDuration: Double {
-        audioPlayer.duration > 0 ? audioPlayer.duration : Double(episode.durationSeconds)
+    /// Time relative to main episode for transcript highlighting
+    /// During intro/outro, this returns 0 or max time respectively
+    var transcriptTimeBinding: Binding<Double> {
+        Binding(
+            get: {
+                let introDuration = Double(episode.introDurationSeconds ?? 0)
+                switch audioPlayer.currentPhase {
+                case .intro:
+                    return 0 // Transcript hasn't started yet
+                case .main:
+                    return audioPlayer.currentTime // Direct time within main episode
+                case .outro:
+                    return Double(episode.durationSeconds) // Transcript is at end
+                }
+            },
+            set: { _ in }
+        )
     }
 
-    init(episode: Episode, isPresented: Binding<Bool>) {
+    /// Total duration across all phases
+    var totalDuration: Double {
+        audioPlayer.totalDuration > 0 ? audioPlayer.totalDuration : Double(episode.totalDurationSeconds)
+    }
+
+    /// Build playback segments for the progress bar
+    var playbackSegments: [PlaybackSegment] {
+        var segments: [PlaybackSegment] = []
+        var currentStart: Double = 0
+
+        // Intro segment
+        if episode.hasIntro, let introDuration = episode.introDurationSeconds {
+            segments.append(PlaybackSegment(
+                id: UUID(),
+                label: "Intro",
+                startTime: currentStart,
+                endTime: currentStart + Double(introDuration)
+            ))
+            currentStart += Double(introDuration)
+        }
+
+        // Main episode segment
+        segments.append(PlaybackSegment(
+            id: UUID(),
+            label: "Episode",
+            startTime: currentStart,
+            endTime: currentStart + Double(episode.durationSeconds)
+        ))
+        currentStart += Double(episode.durationSeconds)
+
+        // Outro segment
+        if episode.hasOutro, let outroDuration = episode.outroDurationSeconds {
+            segments.append(PlaybackSegment(
+                id: UUID(),
+                label: "Outro",
+                startTime: currentStart,
+                endTime: currentStart + Double(outroDuration)
+            ))
+        }
+
+        return segments
+    }
+
+    init(episode: Episode, presentedEpisode: Binding<Episode?>) {
         self.episode = episode
-        self._isPresented = isPresented
+        self._presentedEpisode = presentedEpisode
 
         // Convert word timestamps to transcript segments for the view model
         let segments = Self.createTranscriptSegments(from: episode.transcript)
@@ -87,7 +153,49 @@ struct NowPlayingView: View {
     }
 
 
+    /// Gradient colors for the immersive overlay
+    private var overlayGradientColors: [Color] {
+        [
+            Color(palette: palette.shade400),
+            Color(palette: palette.shade600),
+            Color(palette: palette.shade800),
+            Color(palette: palette.shade900)
+        ]
+    }
+
     var body: some View {
+        ImmersiveOverlayContainer(
+            isPresented: $showQuestionSheet,
+            colors: overlayGradientColors,
+            background: {
+                // Main NowPlayingView content
+                nowPlayingContent
+            },
+            overlay: {
+                // Question sheet content
+                ImmersiveQuestionContent(
+                    isPresented: $showQuestionSheet,
+                    episode: episode,
+                    timestamp: questionTimestamp,
+                    transcriptContext: getTranscriptContext(),
+                    onResponseReady: { newAudioUrl in
+                        Task {
+                            await audioPlayer.switchAudio(to: newAudioUrl, resumeAt: questionTimestamp)
+                        }
+                    }
+                )
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .statusBarHidden(true)
+        .task {
+            await audioPlayer.load(episode: episode)
+        }
+    }
+
+    // MARK: - Main Content
+
+    private var nowPlayingContent: some View {
         ZStack {
             // Background
             backgroundColor
@@ -104,7 +212,7 @@ struct NowPlayingView: View {
 
                     // Title + Icon lockup
                     HStack(alignment: .center) {
-                        Text(episode.author)
+                        Text(episode.author ?? "Podbook")
                             .font(.system(size: 17, weight: .regular))
                             .foregroundColor(authorNameColor)
 
@@ -130,7 +238,7 @@ struct NowPlayingView: View {
                     VStack(alignment: .center, spacing: 8) {
                         TranscriptScrollView(
                             viewModel: transcriptViewModel,
-                            currentTime: currentTimeBinding,
+                            currentTime: transcriptTimeBinding,
                             activeColor: transcriptActiveColor,
                             inactiveColor: transcriptInactiveColor,
                             backgroundColor: backgroundColor
@@ -141,8 +249,11 @@ struct NowPlayingView: View {
                     .frame(width: 402, height: 439, alignment: .center)
                     .onAppear {
                         // Set up seek callback
+                        // Transcript times are relative to main episode, so we need to
+                        // account for intro duration when seeking
                         transcriptViewModel.onSeek = { time in
-                            audioPlayer.seek(to: time)
+                            let introDuration = Double(episode.introDurationSeconds ?? 0)
+                            audioPlayer.seekCombined(to: introDuration + time)
                         }
                     }
 
@@ -256,19 +367,30 @@ struct NowPlayingView: View {
                         SegmentedProgressBar(
                             currentTime: currentTimeBinding,
                             totalDuration: totalDuration,
-                            segments: [PlaybackSegment(id: UUID(), label: "Episode", startTime: 0, endTime: totalDuration)],
+                            segments: playbackSegments,
                             isDragging: $isDragging,
                             onSeek: { newTime in
-                                audioPlayer.seek(to: max(0, min(newTime, totalDuration)))
+                                audioPlayer.seekCombined(to: max(0, min(newTime, totalDuration)))
                             }
                         )
                         .frame(height: 16)
 
-                        // Time labels
+                        // Time labels with phase indicator
                         HStack {
-                            Text(formatTime(currentTime))
-                                .font(.system(size: 13))
-                                .foregroundColor(.white.opacity(0.7))
+                            HStack(spacing: 6) {
+                                Text(formatTime(combinedCurrentTime))
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.white.opacity(0.7))
+
+                                if episode.hasIntro || episode.hasOutro {
+                                    Text("·")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.white.opacity(0.4))
+                                    Text(audioPlayer.currentPhase.rawValue)
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(.white.opacity(0.5))
+                                }
+                            }
 
                             Spacer()
 
@@ -282,19 +404,8 @@ struct NowPlayingView: View {
                     .frame(width: 402, alignment: .topLeading)
 
                     // Playback control container
-                    HStack(alignment: .center, spacing: 16) {
-                        // Info button
-                        Button(action: {}) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(8)
-                            .frame(width: 48, height: 48, alignment: .center)
-                        }
-
-                        // Skip backward button
+                    HStack(alignment: .center, spacing: 24) {
+                        // Skip backward button (no background)
                         Button(action: {
                             audioPlayer.skipBackward()
                             let impact = UIImpactFeedbackGenerator(style: .light)
@@ -310,37 +421,41 @@ struct NowPlayingView: View {
                                 }
                             }
                         }) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Image(systemName: "gobackward.15")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(8)
-                            .frame(width: 56, height: 56, alignment: .center)
-                            .background(.white.opacity(0.08))
-                            .cornerRadius(999)
+                            Image(systemName: "gobackward.15")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white.opacity(0.8))
+                                .frame(width: 56, height: 56)
                         }
                         .rotationEffect(.degrees(skipBackwardRotation))
 
-                        // Play/Pause button
-                        Button(action: {
+                        // Play/Pause button - tap to toggle, long press to ask question
+                        HStack(alignment: .center, spacing: 10) {
+                            Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                .contentTransition(.symbolEffect(.replace))
+                                .font(.system(size: 28))
+                                .foregroundColor(.white)
+                                .offset(x: audioPlayer.isPlaying ? 0 : 2)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 12)
+                        .frame(width: 82, height: 66, alignment: .center)
+                        .background(.white.opacity(0.08))
+                        .cornerRadius(48)
+                        .onTapGesture {
                             audioPlayer.togglePlayPause()
-                        }) {
-                            HStack(alignment: .center, spacing: 10) {
-                                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                                    .contentTransition(.symbolEffect(.replace))
-                                    .font(.system(size: 28))
-                                    .foregroundColor(.white)
-                                    .offset(x: audioPlayer.isPlaying ? 0 : 2)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 12)
-                            .frame(width: 82, height: 66, alignment: .center)
-                            .background(.white.opacity(0.08))
-                            .cornerRadius(48)
+                        }
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            // Haptic feedback for long press
+                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                            impact.impactOccurred()
+
+                            // Pause playback and trigger ask mode
+                            audioPlayer.pause()
+                            questionTimestamp = audioPlayer.combinedCurrentTime
+                            showQuestionSheet = true
                         }
 
-                        // Skip forward button
+                        // Skip forward button (no background)
                         Button(action: {
                             audioPlayer.skipForward()
                             let impact = UIImpactFeedbackGenerator(style: .light)
@@ -356,28 +471,12 @@ struct NowPlayingView: View {
                                 }
                             }
                         }) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Image(systemName: "goforward.15")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(8)
-                            .frame(width: 56, height: 56, alignment: .center)
-                            .background(.white.opacity(0.08))
-                            .cornerRadius(999)
+                            Image(systemName: "goforward.15")
+                                .font(.system(size: 28))
+                                .foregroundColor(.white.opacity(0.8))
+                                .frame(width: 56, height: 56)
                         }
                         .rotationEffect(.degrees(skipForwardRotation))
-
-                        // Speed button
-                        Button(action: {}) {
-                            HStack(alignment: .center, spacing: 8) {
-                                Text("1×")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(8)
-                            .frame(width: 48, height: 48, alignment: .center)
-                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 0)
@@ -391,15 +490,24 @@ struct NowPlayingView: View {
             DragGesture()
                 .onEnded { value in
                     if value.translation.height > 100 {
-                        isPresented = false
+                        presentedEpisode = nil
                     }
                 }
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .statusBarHidden(true)
-        .task {
-            await audioPlayer.load(episode: episode)
-        }
+    }
+
+    /// Get transcript context around current playback position for question context
+    private func getTranscriptContext() -> String {
+        let contextWindow: TimeInterval = 15  // 15 seconds before and after
+        let start = max(0, questionTimestamp - contextWindow)
+        let end = questionTimestamp + contextWindow
+
+        // Filter words within the time window
+        let contextWords = episode.transcript
+            .filter { $0.startTime >= start && $0.startTime <= end }
+            .map { $0.word }
+
+        return contextWords.joined(separator: " ")
     }
 
     private func formatTime(_ timeInSeconds: Double) -> String {
@@ -428,6 +536,6 @@ struct TranscriptLine: View {
 #Preview {
     NowPlayingView(
         episode: Episode.sample,
-        isPresented: .constant(true)
+        presentedEpisode: .constant(Episode.sample)
     )
 }
